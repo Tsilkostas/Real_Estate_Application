@@ -4,10 +4,20 @@ import folium
 from streamlit_folium import st_folium  
 from folium.plugins import MarkerCluster
 import ast
-from typing import Dict, List, Any, Optional, Tuple
+import re
+from typing import Dict, Any, Optional
 
 # Set up internationalization
 def get_labels(language: str) -> Dict[str, str]:
+    """ 
+    Returns a dictionary of labels (UI text) for the selected language.
+
+    Args:
+        language (str): The selected language (e.g., "English" or "Greek").
+
+    Returns:
+       Dict[str, str]: A dictionary of labels for the selected language.
+    """
     labels = {
         "English": {
             "title": "Real Estate Property Catalog",
@@ -46,7 +56,17 @@ def get_labels(language: str) -> Dict[str, str]:
             "postcode": "Postal Code",
             "yes": "Yes",
             "no": "No",
-            "all": "All"
+            "all": "All",
+            "search_properties": "Search Properties",
+            "search_placeholder": "Enter address, keywords, or features...",
+            "search_results": "Found {} properties matching '{}'",
+            "no_search_results": "No properties found matching '{}'",
+            "advanced_search": "Advanced Search",
+            "search_in": "Search in:",
+            "search_address": "Address",
+            "search_description": "Description",
+            "search_both": "Both",
+            "recent_searches": "Recent Searches"
         },
         "Greek": {
             "title": "Κατάλογος Ακινήτων",
@@ -85,36 +105,69 @@ def get_labels(language: str) -> Dict[str, str]:
             "postcode": "Ταχυδρομικός Κώδικας",
             "yes": "Ναι",
             "no": "Όχι",
-            "all": "Όλα"
+            "all": "Όλα",
+            "search_properties": "Αναζήτηση Ακινήτων",
+            "search_placeholder": "Εισάγετε διεύθυνση, λέξεις-κλειδιά, ή χαρακτηριστικά...",
+            "search_results": "Βρέθηκαν {} ακίνητα που ταιριάζουν με '{}'",
+            "no_search_results": "Δεν βρέθηκαν ακίνητα που ταιριάζουν με '{}'",
+            "advanced_search": "Προχωρημένη Αναζήτηση",
+            "search_in": "Αναζήτηση σε:",
+            "search_address": "Διεύθυνση",
+            "search_description": "Περιγραφή", 
+            "search_both": "Και τα δύο",
+            "recent_searches": "Πρόσφατες Αναζητήσεις"
         }
     }
     return labels.get(language, labels["English"])
 
+# Helper function to highlight search terms in text
+def highlight_text(text, query):
+    if not query or not isinstance(text, str):
+        return text
+    
+    highlighted = text
+    for keyword in query.lower().split():
+        pattern = re.compile(f'({re.escape(keyword)})', re.IGNORECASE)
+        highlighted = pattern.sub(r'<span style="background-color: #ffff99;">\1</span>', highlighted)
+    
+    return highlighted
+
 # Cache the data loading
 @st.cache_data
 def load_data(uploaded_file):
+    """
+    Loads and preprocesses the uploaded CSV file.
+
+    Args:
+        uploaded_file (UploadedFile): The CSV file uploaded by the user.
+
+    Tuple[pd.DataFrame, int]: A tuple containing the cleaned DataFrame and the number of rows dropped.
+    """
     df_original = pd.read_csv(uploaded_file)
     
     # Store original row count
     original_count = len(df_original)
     
-    # Convert numeric fields
+    # Convert numeric fields (e.g., price, surface, lat, lng) to numeric types.
+    # Invalid values (e.g., non-numeric strings) will be converted to NaN.
     df_original["price"] = pd.to_numeric(df_original["price"], errors="coerce")
     df_original["surface"] = pd.to_numeric(df_original["surface"], errors="coerce")
     df_original["lat"] = pd.to_numeric(df_original["lat"], errors="coerce")
     df_original["lng"] = pd.to_numeric(df_original["lng"], errors="coerce")
     
-    # Convert boolean fields
+    # Convert boolean fields (e.g., has_parking, has_storage) to boolean types.
+    # Handle various input formats (e.g., "True", "False", 1, 0).
     for col in ["has_parking", "has_storage"]:
         df_original[col] = df_original[col].map(
             {True: True, False: False, "True": True, "False": False, 
              "true": True, "false": False, 1: True, 0: False}
         )
     
-    # Drop rows with missing essential data
+    # Drop rows with missing essential data (e.g., price, surface, lat, lng).
+    # These fields are required for filtering and map rendering.
     df_clean = df_original.dropna(subset=["price", "surface", "lat", "lng"])
     
-    # Calculate how many rows were dropped
+    # Calculate how many rows were dropped due to missing or invalid data.
     rows_dropped = original_count - len(df_clean)
     
     return df_clean, rows_dropped
@@ -127,7 +180,7 @@ def get_image_url(img_data: Any) -> Optional[str]:
     except Exception:
         return None
 
-def display_property_card(row: pd.Series, idx: int, labels: Dict[str, str]):
+def display_property_card(row: pd.Series, idx: int, labels: Dict[str, str], search_query: str = ""):
     with st.container():
         st.markdown("""
         <style>
@@ -137,6 +190,17 @@ def display_property_card(row: pd.Series, idx: int, labels: Dict[str, str]):
             padding: 10px;
             margin-bottom: 10px;
             background-color: #f9f9f9;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        @media (max-width: 600px) {
+            .property-card {
+                padding: 5px;
+            }
+        }
+        .highlight {
+            background-color: #ffff99;
+            padding: 0 2px;
         }
         </style>
         """, unsafe_allow_html=True)
@@ -148,12 +212,19 @@ def display_property_card(row: pd.Series, idx: int, labels: Dict[str, str]):
             with col1:
                 first_img = get_image_url(row["img_url"])
                 if first_img:
-                    st.image(first_img, use_container_width=True)
+                    st.image(first_img, use_container_width=True)  # Make image responsive
                 else:
                     st.info(labels["no_image"])
 
             with col2:
-                st.subheader(row["address_gr"])
+                # Highlight address if it matches search query
+                address_display = row["address_gr"]
+                if search_query:
+                    address_display = highlight_text(address_display, search_query)
+                    st.markdown(f"### {address_display}", unsafe_allow_html=True)
+                else:
+                    st.subheader(address_display)
+                
                 st.write(f"**{labels['price']}:** {row['price']} €")
                 st.write(f"**{labels['category']}:** {row['category_en']}")
                 st.write(f"**{labels['surface_area_unit']}:** {row['surface']} m²")
@@ -167,16 +238,61 @@ def display_property_card(row: pd.Series, idx: int, labels: Dict[str, str]):
                 if pd.notna(row["floor_num"]):
                     st.write(f"**{labels['floor_number']}:** {row['floor_num']}")
                 
+                # Highlight description if it matches search query
                 description = str(row["description_gr"]) if pd.notna(row["description_gr"]) else ""
-                st.write(f"**{labels['description']}:** {description[:100]}...")
+                description_preview = description
                 
+                if search_query:
+                    description_preview = highlight_text(description_preview, search_query)
+                    st.markdown(f"**{labels['description']}:** {description_preview}", unsafe_allow_html=True)
+                else:
+                    st.write(f"**{labels['description']}:** {description_preview}")
+                
+                # Store the selected property in session state to persist it across reruns.
+                # This allows the app to display the detailed view when the user clicks "View Details"
                 if st.button(labels["view_details"], key=f"view_{idx}"):
                     st.session_state["selected_property"] = row.to_dict()
+                    st.session_state["search_query"] = search_query  # Save search query for highlighting in detail view
                     st.rerun()
             
             st.markdown('</div>', unsafe_allow_html=True)
 
 def main():
+    # Custom CSS for responsive property cards
+    st.markdown("""
+    <style>
+    .property-card {
+    border: 1px solid #ddd; /* Light gray border */
+    border-radius: 5px; /* Rounded corners */
+    padding: 10px; /* Spacing inside the card */
+    margin-bottom: 10px; /* Spacing between cards */
+    background-color: #f9f9f9; /* Light gray background */
+    width: 100%; /* Full width */
+    box-sizing: border-box; /* Include padding in width calculation */
+    }
+    .stImage img {
+        max-width: 100%;
+        height: auto;
+    }
+    @media (max-width: 600px) {
+        .stImage img {
+            width: 100%;
+        }
+        .property-card {
+            padding: 5px;
+        }
+    }
+    .highlight {
+        background-color: #ffff99;
+        padding: 0 2px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    # Initialize session state for search history
+    if "search_history" not in st.session_state:
+        st.session_state.search_history = []
+
     # Sidebar for language selection first
     language = st.sidebar.selectbox("Language / Γλώσσα", ["English", "Greek"])
     labels = get_labels(language)
@@ -206,17 +322,48 @@ def main():
         if all(column in df.columns for column in required_columns):
             st.success(labels["success_upload"])
             
+            # Search functionality in sidebar
+            st.sidebar.header(labels["search_properties"])
+            search_query = st.sidebar.text_input(
+                label="Search", 
+                placeholder=labels["search_placeholder"],
+                label_visibility="hidden"
+            )
+            
+            # Advanced search options
+            with st.sidebar.expander(labels["advanced_search"], expanded=False):
+                search_in = st.radio(
+                    labels["search_in"],
+                    [labels["search_both"], labels["search_address"], labels["search_description"]]
+                )
+            
+            # Display recent searches
+            if st.session_state.search_history:
+                with st.sidebar.expander(labels["recent_searches"]):
+                    for idx, hist_search in enumerate(st.session_state.search_history):
+                        if st.button(hist_search, key=f"hist_{idx}"):
+                            search_query = hist_search
+                            st.rerun()
+            
+            # Add current search to history
+            if search_query and search_query not in st.session_state.search_history:
+                st.session_state.search_history.insert(0, search_query)
+                # Keep only the 5 most recent searches
+                st.session_state.search_history = st.session_state.search_history[:5]
+                # Reset to page 1 when new search is performed
+                if "page_number" in st.session_state:
+                    st.session_state["page_number"] = 1
+            
             # Sidebar for filtering
             st.sidebar.header(labels["filters"])
             
-            
             # Operation type filter
             operation_types = sorted(set(["Sale", "Auction"]) | set(df["operation"].unique()))
-            # operation_type = st.sidebar.selectbox(labels["operation_type"], [labels["all"]] + operation_types)
             operation_type = st.sidebar.selectbox(
                 labels["operation_type"],
                 operation_types
             )
+            
             # Category filter
             categories = [labels["all"]] + sorted(df["category_en"].unique().tolist())
             selected_category = st.sidebar.selectbox(labels["category"], categories)
@@ -312,21 +459,50 @@ def main():
             elif has_storage == labels["no"]:
                 filtered_df = filtered_df[filtered_df["has_storage"] == False]
             
+            # Apply search filter based on user selection (address, description, or both)
+            if search_query:
+                # Determine where to search based on user selection
+                if search_in == labels["search_address"]:
+                    search_mask = filtered_df["address_gr"].str.lower().str.contains(search_query.lower(), na=False)
+                elif search_in == labels["search_description"]:
+                    search_mask = filtered_df["description_gr"].str.lower().str.contains(search_query.lower(), na=False)
+                else:  # Default: search both
+                    search_mask = (
+                        filtered_df["address_gr"].str.lower().str.contains(search_query.lower(), na=False) |
+                        filtered_df["description_gr"].str.lower().str.contains(search_query.lower(), na=False)
+                    )
+                
+                # Apply the search filter
+                filtered_df = filtered_df[search_mask]
+                
+                # Show search results message
+                if len(filtered_df) > 0:
+                    st.success(labels["search_results"].format(len(filtered_df), search_query))
+                else:
+                    st.warning(labels["no_search_results"].format(search_query))
+            
             # Apply sorting
             filtered_df = filtered_df.sort_values(by=sort_by, ascending=sort_ascending)
             
-            # Display filtered results count
-            st.write(labels["showing_properties"].format(len(filtered_df)))
+            # Display filtered results count (if not already shown by search)
+            if not search_query:
+                st.write(labels["showing_properties"].format(len(filtered_df)))
             
             # Detailed property view (if property is selected)
             if "selected_property" in st.session_state:
                 property = st.session_state["selected_property"]
+                search_query = st.session_state.get("search_query", "")
                 
-                st.header(property["address_gr"])
+                # Display property address with highlighting if needed
+                if search_query and "address_gr" in property:
+                    highlighted_address = highlight_text(property["address_gr"], search_query)
+                    st.markdown(f"# {highlighted_address}", unsafe_allow_html=True)
+                else:
+                    st.header(property["address_gr"])
                 
                 first_img = get_image_url(property["img_url"])
                 if first_img:
-                    st.image(first_img, use_container_width=True)
+                    st.image(first_img, width=300)
                 
                 # Display all property details
                 col1, col2 = st.columns(2)
@@ -360,32 +536,51 @@ def main():
                     if pd.notna(property["postcode"]):
                         st.write(f"**{labels['postcode']}:** {property['postcode']}")
                 
-                # Full description
+                # Full description with highlighting if needed
                 st.write(f"**{labels['description']}:**")
-                st.write(property['description_gr'])
+                if search_query and "description_gr" in property and isinstance(property["description_gr"], str):
+                    highlighted_description = highlight_text(property["description_gr"], search_query)
+                    st.markdown(highlighted_description, unsafe_allow_html=True)
+                else:
+                    st.write(property['description_gr'])
                 
                 # Link to original listing
                 st.write(f"**{labels['original_listing']}:** [Link]({property['url']})")
                 
                 if st.button(labels["back_to_listings"]):
                     del st.session_state["selected_property"]
+                    if "search_query" in st.session_state:
+                        del st.session_state["search_query"]
                     st.rerun()
             
             else:
-                # Pagination
+                # Pagination setup
                 page_size = 10
-                max_pages = max(1, len(filtered_df) // page_size + (1 if len(filtered_df) % page_size > 0 else 0))
-                
+                max_pages = max(1, len(filtered_df) // page_size + (2 if len(filtered_df) % page_size > 0 else 0))
+
+                # Initialize session state for page_number if it doesn't exist yet
+                if "page_number" not in st.session_state:
+                    st.session_state["page_number"] = 1
+
+                # Pagination columns
                 col1, col2, col3 = st.columns([1, 3, 1])
                 with col2:
                     page_number = st.number_input(
                         labels["page_number"], 
                         min_value=1, 
                         max_value=max_pages,
-                        value=1
+                        value=st.session_state["page_number"],
+                        key="page_number_input"
                     )
                 
-                start_idx = (page_number - 1) * page_size
+                # Update session state for page_number if it changes through the number input
+                if page_number != st.session_state["page_number"]:
+                    st.session_state["page_number"] = page_number
+
+                # Display current page info (Page X of Y)
+                st.write(f"Page {st.session_state['page_number']} of {max_pages}")
+                
+                start_idx = (st.session_state["page_number"] - 1) * page_size
                 end_idx = min(start_idx + page_size, len(filtered_df))
                 
                 # Display property listings in a grid
@@ -395,21 +590,28 @@ def main():
                 paginated_df = filtered_df.iloc[start_idx:end_idx]
                 
                 for idx, row in paginated_df.iterrows():
-                    display_property_card(row, idx, labels)
+                    display_property_card(row, idx, labels, search_query)
                 
                 # Pagination controls
                 cols = st.columns([1, 1, 1])
-                with cols[0]:
-                    if page_number > 1:
-                        if st.button("← Previous"):
-                            st.session_state["page_number"] = page_number - 1
-                            st.rerun()
                 
+                # Previous button
+                with cols[0]:
+                    if st.session_state["page_number"] > 1:
+                        if st.button("← Previous"):
+                            st.session_state["page_number"] -= 1
+                            st.rerun()  # This triggers a rerun of the app
+                    else:
+                        st.button("← Previous", disabled=True)
+                
+                # Next button
                 with cols[2]:
-                    if page_number < max_pages:
+                    if st.session_state["page_number"] < max_pages:
                         if st.button("Next →"):
-                            st.session_state["page_number"] = page_number + 1
-                            st.rerun()
+                            st.session_state["page_number"] += 1
+                            st.rerun()  # This triggers a rerun of the app
+                    else:
+                        st.button("Next →", disabled=True)
                 
                 # Interactive map view
                 st.header(labels["property_map"])
@@ -420,7 +622,7 @@ def main():
                     
                     # Add marker cluster
                     marker_cluster = MarkerCluster().add_to(m)
-                
+
                     for idx, row in filtered_df_map.iterrows():
                         # Create popup content
                         popup_html = f"""
@@ -439,8 +641,8 @@ def main():
                     # Use st_folium to render the map
                     st_folium(m, width=700, height=500)
                 else:
-                     st.warning("No properties with valid coordinates found for the selected filters.")   
-        
+                    st.warning("No properties with valid coordinates found for the selected filters.")
+    
         else:
             st.error(labels["error_columns"])
     else:

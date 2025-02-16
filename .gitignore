@@ -17,7 +17,5 @@ __pycache__/
 *.pyd
 *.db
 
-test.py
-test_app.py
-*.txt
+
 *.csv
