@@ -1,66 +1,32 @@
-# Real Estate Property Catalog – Web Application
+# Real Estate Property Catalog
 
-This is an interactive web application developed using **Python** and **Streamlit**, designed to serve as a property catalog for real estate listings. The application allows users to browse, filter, and view detailed property information using pre-prepared CSV data. It is targeted towards home buyers, renters, and agents who want to explore and analyze property listings efficiently.
+This web application allows users to view, filter, and explore real estate property listings uploaded as a CSV file. The application provides various filtering options such as price, surface area, operation type (e.g., sale or auction), and more. The properties are displayed in both a paginated list and on an interactive map.
 
 ## Features
 
-- **Property Listing Grid**: View property listings in an attractive grid, showing key details such as the address, price, surface area, category, and a brief summary.
-- **Pagination**: Navigate through large property datasets using a pagination system.
-- **Filtering**: Filter listings based on:
-  - Operation type (sale, rent, auction)
-  - Price range
-  - Surface area
-  - Construction year
-  - Features (e.g., parking, storage)
-- **Search Functionality**: Search for properties by address or description keywords.
-- **Interactive Map**: View property locations on an interactive map using **Folium**. Property markers display additional information when clicked.
-- **Detailed Property View**: View detailed property information, including a large image, full description, and external URL.
-- **Internationalization**: Support for English and Greek language toggle for UI elements.
+- **CSV Upload**: Users can upload a CSV file containing real estate listings.
+- **Language Support**: The app supports English and Greek.
+- **Data Filtering**: Filter properties by price range, surface area, category, operation type, and more.
+- **Property Display**: Each property is displayed with essential details like price, surface area, category, parking availability, and a brief description.
+- **Pagination**: Property listings are paginated for easy browsing.
+- **Interactive Map**: A map view with markers for each property location.
+- **Detailed Property View**: Users can click on a property to view more details, including images, description, and link to the original listing.
 
-## Data Input
+## Requirements
 
-The application reads real estate listings from a **CSV file** containing the following columns:
-
-- `created_at`
-- `updated_at`
-- `category_en`
-- `category_gr`
-- `category_source_en`
-- `type_gr`
-- `operation`
-- `lng`
-- `lat`
-- `surface`
-- `construction_year`
-- `price`
-- `price_per_m2`
-- `has_parking`
-- `has_storage`
-- `floor_num`
-- `floor_cnt`
-- `floor_min`
-- `address_gr`
-- `description_gr`
-- `url`
-- `img_url`
-- `postcode`
-
-Some fields like `lng`, `lat`, `surface`, `has_parking`, and `has_storage` may contain value errors, and data validation is performed during the file upload.
-
-## Installation
-
-### Prerequisites
-
-Make sure to have **Python 3.11+** and the following Python packages installed:
+- Python 3.7+
 - Streamlit
-- Pandas
-- Folium
-- Other libraries are listed in the `requirements.txt` file.
+- pandas
+- folium
+- streamlit-folium
+- ast
 
-### Steps to Set Up
+Install the required libraries using:
 
-1. **Clone the repository**:
-   Clone this repository to your local machine:
+```bash
+pip install -r requirements.txt
 
-   ```bash
-   git clone https://github.com/yourusername/real-estate-app.git
+Clone this repository:
+
+```bash
+git clone https://github.com/Tsilkostas/Real_Estate_Application.git
