@@ -1,0 +1,23 @@
+# Virtual environment
+venv/
+env/
+real_estate/
+
+# VSCode files
+.vscode/
+
+# Windows system files
+Thumbs.db
+*.log
+
+# Python specific files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+
+test.py
+test_app.py
+*.txt
+*.csv
