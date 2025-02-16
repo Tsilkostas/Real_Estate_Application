@@ -25,8 +25,9 @@ Install the required libraries using:
 
 ```bash
 pip install -r requirements.txt
+```
 
 Clone this repository:
-
 ```bash
 git clone https://github.com/Tsilkostas/Real_Estate_Application.git
+```
