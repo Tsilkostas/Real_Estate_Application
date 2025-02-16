@@ -137,6 +137,13 @@ def display_property_card(row: pd.Series, idx: int, labels: Dict[str, str]):
             padding: 10px;
             margin-bottom: 10px;
             background-color: #f9f9f9;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        @media (max-width: 600px) {
+            .property-card {
+                padding: 5px;
+            }
         }
         </style>
         """, unsafe_allow_html=True)
@@ -148,7 +155,7 @@ def display_property_card(row: pd.Series, idx: int, labels: Dict[str, str]):
             with col1:
                 first_img = get_image_url(row["img_url"])
                 if first_img:
-                    st.image(first_img, use_container_width=True)
+                    st.image(first_img, use_container_width=True)  # Make image responsive
                 else:
                     st.info(labels["no_image"])
 
@@ -177,6 +184,33 @@ def display_property_card(row: pd.Series, idx: int, labels: Dict[str, str]):
             st.markdown('</div>', unsafe_allow_html=True)
 
 def main():
+    # Add custom CSS for responsiveness
+    st.markdown("""
+    <style>
+    .property-card {
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        padding: 10px;
+        margin-bottom: 10px;
+        background-color: #f9f9f9;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .stImage img {
+        max-width: 100%;
+        height: auto;
+    }
+    @media (max-width: 600px) {
+        .stImage img {
+            width: 100%;
+        }
+        .property-card {
+            padding: 5px;
+        }
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     # Sidebar for language selection first
     language = st.sidebar.selectbox("Language / Γλώσσα", ["English", "Greek"])
     labels = get_labels(language)
@@ -209,14 +243,13 @@ def main():
             # Sidebar for filtering
             st.sidebar.header(labels["filters"])
             
-            
             # Operation type filter
             operation_types = sorted(set(["Sale", "Auction"]) | set(df["operation"].unique()))
-            # operation_type = st.sidebar.selectbox(labels["operation_type"], [labels["all"]] + operation_types)
             operation_type = st.sidebar.selectbox(
                 labels["operation_type"],
                 operation_types
             )
+            
             # Category filter
             categories = [labels["all"]] + sorted(df["category_en"].unique().tolist())
             selected_category = st.sidebar.selectbox(labels["category"], categories)
@@ -326,7 +359,7 @@ def main():
                 
                 first_img = get_image_url(property["img_url"])
                 if first_img:
-                    st.image(first_img, use_container_width=True)
+                    st.image(first_img, width=300)
                 
                 # Display all property details
                 col1, col2 = st.columns(2)
@@ -372,20 +405,33 @@ def main():
                     st.rerun()
             
             else:
-                # Pagination
+                # Pagination setup
                 page_size = 10
                 max_pages = max(1, len(filtered_df) // page_size + (1 if len(filtered_df) % page_size > 0 else 0))
-                
+
+                # Initialize session state for page_number if it doesn't exist yet
+                if "page_number" not in st.session_state:
+                    st.session_state["page_number"] = 1
+
+                # Pagination columns
                 col1, col2, col3 = st.columns([1, 3, 1])
                 with col2:
                     page_number = st.number_input(
                         labels["page_number"], 
                         min_value=1, 
                         max_value=max_pages,
-                        value=1
+                        value=st.session_state["page_number"],
+                        key="page_number_input"
                     )
                 
-                start_idx = (page_number - 1) * page_size
+                # Update session state for page_number if it changes through the number input
+                if page_number != st.session_state["page_number"]:
+                    st.session_state["page_number"] = page_number
+
+                # Display current page info (Page X of Y)
+                st.write(f"Page {st.session_state['page_number']} of {max_pages}")
+                
+                start_idx = (st.session_state["page_number"] - 1) * page_size
                 end_idx = min(start_idx + page_size, len(filtered_df))
                 
                 # Display property listings in a grid
@@ -399,17 +445,24 @@ def main():
                 
                 # Pagination controls
                 cols = st.columns([1, 1, 1])
-                with cols[0]:
-                    if page_number > 1:
-                        if st.button("← Previous"):
-                            st.session_state["page_number"] = page_number - 1
-                            st.rerun()
                 
+                # Previous button
+                with cols[0]:
+                    if st.session_state["page_number"] > 1:
+                        if st.button("← Previous"):
+                            st.session_state["page_number"] -= 1
+                            st.rerun()  # This triggers a rerun of the app
+                    else:
+                        st.button("← Previous", disabled=True)
+                
+                # Next button
                 with cols[2]:
-                    if page_number < max_pages:
+                    if st.session_state["page_number"] < max_pages:
                         if st.button("Next →"):
-                            st.session_state["page_number"] = page_number + 1
-                            st.rerun()
+                            st.session_state["page_number"] += 1
+                            st.rerun()  # This triggers a rerun of the app
+                    else:
+                        st.button("Next →", disabled=True)
                 
                 # Interactive map view
                 st.header(labels["property_map"])
@@ -420,7 +473,7 @@ def main():
                     
                     # Add marker cluster
                     marker_cluster = MarkerCluster().add_to(m)
-                
+
                     for idx, row in filtered_df_map.iterrows():
                         # Create popup content
                         popup_html = f"""
@@ -439,8 +492,8 @@ def main():
                     # Use st_folium to render the map
                     st_folium(m, width=700, height=500)
                 else:
-                     st.warning("No properties with valid coordinates found for the selected filters.")   
-        
+                    st.warning("No properties with valid coordinates found for the selected filters.")
+    
         else:
             st.error(labels["error_columns"])
     else:
